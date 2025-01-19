@@ -49,7 +49,7 @@ class EVMTransformer(Transformer):
         statements = []
 
         for item in items:
-            if isinstance(item, ExternalDef):
+            if isinstance(item, NamedSpec):
                 defs.append(item)
             elif isinstance(item, list) and all(isinstance(x, Substitution) for x in item):
                 sub_groups.append(item)
@@ -63,12 +63,12 @@ class EVMTransformer(Transformer):
             defs=defs,
             sub_groups=sub_groups,
             main_def=main_def,
-            statements=statements
+            body=statements
         ).validate()
 
     def ext_def(self, items):
         name, fn_def = items
-        return ExternalDef(name=str(name), fn_def=fn_def)
+        return NamedSpec(name=str(name), spec=fn_def)
 
     def fn_def(self, items):
         deps = set()
@@ -95,7 +95,7 @@ class EVMTransformer(Transformer):
 
         assert inp is not None
         assert out is not None
-        return FuncDef(inp=inp, out=out, deps=deps, affects=affects)
+        return FuncSpec(inp=inp, out=out, deps=deps, affects=affects)
 
     def deps(self, items):
         return ('deps', set(items[0]) if items else set())

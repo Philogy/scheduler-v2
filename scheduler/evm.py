@@ -494,7 +494,7 @@ ext delegatecall [
 ]
 
 ext staticcall [
-    deps(control_flow, memory, storage, balance)
+    deps(control_flow, storage, balance)
     affects(memory, returndata)
     in: [gas, addr, argsOffset, argsSize, retOffset, retSize]
     out: [success]
@@ -507,7 +507,7 @@ ext selfdestruct [
 ]
 
 ext revert [
-    deps(control_flow, memory)
+    deps(memory)
     affects(control_flow)
     in: [offset, size]
     out: []
