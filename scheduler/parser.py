@@ -1,4 +1,5 @@
 from lark import Lark, Transformer
+from .evm import EVM_EXT
 from .target import *
 
 PARSER = Lark(
@@ -167,3 +168,10 @@ class EVMTransformer(Transformer):
 
     def CNAME(self, token):
         return str(token)
+
+
+def parse_to_target(input: str) -> Target:
+    tree = PARSER.parse(EVM_EXT + '\n' + input)
+    target = EVMTransformer().transform(tree)
+    assert isinstance(target, Target)
+    return target

@@ -1,28 +1,21 @@
-from scheduler.parser import PARSER, EVMTransformer, Target
-from scheduler.evm import EVM_EXT
-from scheduler.graph import GraphBuilder
+from scheduler.parser import parse_to_target
+from scheduler.graph import Graph
 
 
 def main():
-    tree = PARSER.parse(
-        EVM_EXT + '\n' +
+    target = parse_to_target(
         '''
         main [
             in: [x, y]
-            out: []
+            out: [z]
         ]
 
-        b = sload(x)
-        sstore(y, b)
+        sstore(y, sload(x))
+        z = calldataload(4)
         '''
     )
 
-    print(tree.pretty())
-
-    out = EVMTransformer().transform(tree)
-    assert isinstance(out, Target)
-
-    return GraphBuilder(out)
+    return Graph(target)
 
 
 if __name__ == '__main__':

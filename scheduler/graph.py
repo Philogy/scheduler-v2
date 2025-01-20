@@ -30,6 +30,9 @@ class FunctionNode(Producer):
             inp.consumers.add(self)
         self.outputs = []
 
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}({self.calls!r}, {self.inputs})'
+
     def set_outputs(self, outs: list['ValueNode']):
         for out in outs:
             out.producer = self
@@ -50,14 +53,18 @@ class ValueNode:
         self.producer = producer
         self.consumers = set()
 
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}(name={self.name!r}, producer={self.producer})'
 
-class GraphBuilder:
+
+class Graph:
     target: Target
     vars: dict[str, ValueNode]
     last_deps: dict[str,  set[FunctionNode]]
     last_affects: dict[str, FunctionNode]
     specs: dict[str, NamedSpec]
     fns: set[FunctionNode]
+    inputs: list[ValueNode]
 
     def __init__(self, target: Target):
         self.target = target
@@ -71,31 +78,36 @@ class GraphBuilder:
             for d in target.defs
         }
 
+        self.inputs = []
         for inp in target.main_def.inp.names():
-            self.vars[inp] = ValueNode(inp, None)
+            self.inputs.append(node := ValueNode(inp, None))
+            self.vars[inp] = node
 
         for stmt in target.body:
             if isinstance(stmt, Call):
-                outs = self.add_expr(stmt)
+                outs = self._add_expr(stmt)
                 assert not outs, f'Expected {stmt.name!r} to have 0 outputs, returned {len(outs)}'
             elif isinstance(stmt, SingleAssign):
-                outs = self.single_arg_expr(stmt.expr)
+                outs = self._single_arg_expr(stmt.expr)
                 self.vars[stmt.to] = outs
             else:
                 assert isinstance(stmt, MultiAssign), f'{stmt}'
-                outs = self.add_expr(stmt.call)
+                outs = self._add_expr(stmt.call)
                 assert len(outs) == len(stmt.to), \
                     f'Expected {stmt.call.name!r} to have {len(stmt.to)} outputs, got {len(outs)}'
                 for to, out in zip(stmt.to, outs):
                     self.vars[to] = out
 
-    def single_arg_expr(self, expr: Expr) -> ValueNode:
-        nodes_out = self.add_expr(expr)
+        for out in target.main_def.out.names():
+            assert out in self.vars, f'Output {out!r} not assigned'
+
+    def _single_arg_expr(self, expr: Expr) -> ValueNode:
+        nodes_out = self._add_expr(expr)
         assert len(nodes_out) == 1, \
             f'Expected exactly 1 value node, got: {len(nodes_out)} ({expr})'
         return nodes_out[0]
 
-    def add_expr(self, expr: Expr) -> list[ValueNode]:
+    def _add_expr(self, expr: Expr) -> list[ValueNode]:
         if isinstance(expr, int):
             const = Const(expr)
             return [ValueNode(f'const:{expr}', const)]
@@ -113,7 +125,7 @@ class GraphBuilder:
             f'Calling with {expr.name!r} with {len(expr.args)} expected {spec.inp.size}'
 
         inputs = [
-            self.single_arg_expr(arg)
+            self._single_arg_expr(arg)
             for arg in expr.args
         ]
 
