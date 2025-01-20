@@ -11,17 +11,20 @@ class Producer(ABC):
 
 @dataclass
 class Const(Producer):
+    fid: int
     value: int
 
 
 class FunctionNode(Producer):
     calls: str
+    fid: int
     preds: set['FunctionNode']
     succs: set['FunctionNode']
     inputs: list['ValueNode']
     outputs: list['ValueNode']
 
-    def __init__(self, calls: str, inputs: list['ValueNode']) -> None:
+    def __init__(self, fid: int, calls: str, inputs: list['ValueNode']) -> None:
+        self.fid = fid
         self.calls = calls
         self.preds = set()
         self.succs = set()
@@ -44,11 +47,13 @@ class FunctionNode(Producer):
 
 
 class ValueNode:
+    vid: int
     name: Optional[str]
     producer: Optional[Producer]
     consumers: set[FunctionNode]
 
-    def __init__(self, name: Optional[str], producer: Optional[Producer]) -> None:
+    def __init__(self, vid: int, name: Optional[str], producer: Optional[Producer]) -> None:
+        self.vid = vid
         self.name = name
         self.producer = producer
         self.consumers = set()
@@ -64,23 +69,29 @@ class Graph:
     last_affects: dict[str, FunctionNode]
     specs: dict[str, NamedSpec]
     fns: set[FunctionNode]
-    inputs: list[ValueNode]
+    values: set[ValueNode]
+    inputs: dict[str, ValueNode]
+    total_fns: int
+    total_values: int
 
     def __init__(self, target: Target):
+        self.total_fns = 0
+        self.total_values = 0
         self.target = target
         self.vars = {}
         self.last_deps = defaultdict(set)
         self.last_affects = {}
         self.fns = set()
+        self.values = set()
 
         self.specs: dict[str, NamedSpec] = {
             d.name: d
             for d in target.defs
         }
 
-        self.inputs = []
+        self.inputs = {}
         for inp in target.main_def.inp.names():
-            self.inputs.append(node := ValueNode(inp, None))
+            self.inputs[inp] = (node := self.value(inp, None))
             self.vars[inp] = node
 
         for stmt in target.body:
@@ -109,8 +120,8 @@ class Graph:
 
     def _add_expr(self, expr: Expr) -> list[ValueNode]:
         if isinstance(expr, int):
-            const = Const(expr)
-            return [ValueNode(f'const:{expr}', const)]
+            const = Const(self._new_fid(), expr)
+            return [self.value(f'const:{expr}', const)]
 
         if isinstance(expr, str):
             assert (value := self.vars.get(expr)) is not None, \
@@ -129,13 +140,12 @@ class Graph:
             for arg in expr.args
         ]
 
-        fn = FunctionNode(named_spec.name, inputs)
+        fn = FunctionNode(self._new_fid(), named_spec.name, inputs)
         self.fns.add(fn)
 
         fn.set_outputs(outputs := [
-            ValueNode(f'call[{expr.name!r}]={i + 1}', fn)
+            self.value(f'call[{expr.name!r}]={i + 1}', fn)
             for i in range(spec.out.size())
-
         ])
 
         spec.validate()  # not needed, sanity check
@@ -157,3 +167,18 @@ class Graph:
             self.last_deps[dep].add(fn)
 
         return outputs
+
+    def value(self, name: Optional[str], producer: Optional[Producer]) -> ValueNode:
+        node = ValueNode(self._new_vid(), name, producer)
+        self.values.add(node)
+        return node
+
+    def _new_fid(self) -> int:
+        fid = self.total_fns
+        self.total_fns += 1
+        return fid
+
+    def _new_vid(self) -> int:
+        vid = self.total_values
+        self.total_values += 1
+        return vid

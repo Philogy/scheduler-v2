@@ -1,4 +1,5 @@
-from typing import Optional
+from dataclasses import dataclass
+from typing import Optional, Self
 from .graph import ValueNode
 
 
@@ -18,17 +19,32 @@ class MissingLocal(Exception):
     pass
 
 
-class SymbolicVM:
-    stack: list[ValueNode]
-    locals: dict[int, ValueNode]
+@dataclass
+class Config:
     max_dup_depth: int
     max_swap_depth: int
 
-    def __init__(self, max_dup_depth: int, max_swap_depth: int) -> None:
+
+class SymbolicVM:
+    stack: list[ValueNode]
+    locals: list[Optional[ValueNode]]
+    __config: Config
+
+    def __init__(self, config: Config) -> None:
         self.stack = []
-        self.locals = {}
-        self.max_dup_depth = max_dup_depth
-        self.max_swap_depth = max_swap_depth
+        self.locals = []
+        self.__config = config
+
+    def __hash__(self) -> int:
+        assert self.locals[-1] is not None
+        return hash((
+            tuple(self.stack),
+            tuple(self.locals)
+        ))
+
+    @property
+    def config(self) -> Config:
+        return self.__config
 
     def pop(self) -> ValueNode:
         if self.stack:
@@ -39,9 +55,9 @@ class SymbolicVM:
         self.stack.append(node)
 
     def swap(self, depth: int):
-        if depth <= 0 or depth > self.max_swap_depth:
+        if depth <= 0 or depth > self.config.max_swap_depth:
             raise SwapBeyondMaxDepth(
-                f'swap{depth} invalid, max_swap_depth: {self.max_swap_depth}'
+                f'swap{depth} invalid, max_swap_depth: {self.config.max_swap_depth}'
             )
         if depth > len(self.stack) + 1:
             raise StackTooShallow(
@@ -51,9 +67,9 @@ class SymbolicVM:
         self.stack[ni], self.stack[-1] = self.stack[-1], self.stack[ni]
 
     def dup(self, depth: int):
-        if depth <= 0 or depth > self.max_swap_depth:
+        if depth <= 0 or depth > self.config.max_swap_depth:
             raise DupBeyondMaxDepth(
-                f'dup{depth} invalid, max_dup_depth: {self.max_dup_depth}'
+                f'dup{depth} invalid, max_dup_depth: {self.config.max_dup_depth}'
             )
         if depth > len(self.stack):
             raise StackTooShallow(
@@ -61,16 +77,32 @@ class SymbolicVM:
             )
         self.push(self.stack[-depth])
 
-    def store(self, i: int):
-        value = self.pop()
+    def local_get(self, i: int) -> Optional[ValueNode]:
+        if i >= len(self.locals):
+            return None
+        return self.locals[i]
+
+    def local_set(self, i: int, value: ValueNode):
+        self.locals.extend([None] * (i - len(self.locals) + 1))
         self.locals[i] = value
 
+    def store(self, i: int):
+        self.local_set(i, self.pop())
+
     def load(self, i: int):
-        if (local := self.locals.get(i)) is None:
+        if (local := self.local_get(i)) is None:
             raise MissingLocal(f'No local[{i}]')
         self.push(local)
 
+    def copy(self) -> 'SymbolicVM':
+        new_vm = SymbolicVM(self.config)
+        new_vm.stack = self.stack.copy()
+        new_vm.locals = self.locals.copy()
+        return new_vm
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, SymbolicVM):
-            return False
+            raise NotImplementedError(
+                f'Comparison not supported between {self.__class__.__name__} and {other}'
+            )
         return self.stack == other.stack and self.locals == other.locals

@@ -1,5 +1,6 @@
 from scheduler.parser import parse_to_target
 from scheduler.graph import Graph
+from scheduler.state import State, Config
 
 
 def main():
@@ -15,8 +16,10 @@ def main():
         '''
     )
 
-    return Graph(target)
+    g = Graph(target)
+    s = State.from_graph(g, Config(16, 16))
+    print(s)
 
 
 if __name__ == '__main__':
-    g = main()
+    main()
